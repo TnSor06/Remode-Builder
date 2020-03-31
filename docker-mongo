@@ -1,0 +1,9 @@
+FROM mongo:latest
+ARG username
+ARG secret
+ENV MONGO_INITDB_ROOT_USERNAME=${username} 
+ENV MONGO_INITDB_ROOT_PASSWORD=${secret}
+VOLUME [/data/db /data/configdb]
+ENTRYPOINT ["docker-entrypoint.sh"]
+EXPOSE 27017
+CMD ["mongod"]

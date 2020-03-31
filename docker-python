@@ -1,0 +1,71 @@
+# We deploy with Ubuntu so that devs have a familiar environment.
+# version repoURL 
+FROM codercom/code-server:latest
+
+# Ruining permissions for image manipulation
+RUN sudo chmod 777 /etc/
+RUN sudo chmod 777 /usr/lib/locale/*
+RUN sudo chmod 777 /var/lib/dpkg/*
+RUN sudo chmod -R 777 /var/cache/apt/archives/
+
+RUN locale-gen en_US.UTF-8
+# We cannot use update-locale because docker will not use the env variables
+# configured in /etc/default/locale so we need to set it manually.
+ENV LC_ALL=en_US.UTF-8 \
+	SHELL=/bin/bash
+
+ARG version=3.6
+ARG pipver=3
+
+# Installing python3 and python3-pip
+RUN sudo apt-get update 
+RUN sudo apt install -y software-properties-common
+RUN sudo add-apt-repository -y ppa:deadsnakes/ppa
+RUN sudo apt-get install -y python${version} python${pipver}-pip
+
+RUN sudo chmod 755 /etc/environment 
+
+ARG user=rocket
+
+RUN sudo adduser --gecos '' --disabled-password ${user} && \
+	sudo echo "${user} ALL=(ALL) NOPASSWD:ALL" >> sudo /etc/sudoers.d/nopasswd
+
+# De-ruining permissions for image manipulation
+RUN sudo chmod -R 755 /etc/
+RUN sudo chmod 755 /usr/lib/locale/*
+RUN sudo chmod 640 /var/lib/dpkg/*
+RUN sudo chmod -R 644 /var/cache/apt/archives/*
+
+USER ${user}
+
+ARG repoURL
+ARG repoName
+
+# Create first so these directories will be owned by coder instead of root
+# (workdir and mounting appear to both default to root).
+RUN mkdir -p /home/${user}/project/${repoName} \
+  && mkdir -p /home/${user}/.local/share/code-server
+
+WORKDIR /home/${user}/project/${repoName}
+
+RUN git config --global user.name ${user}
+RUN echo "# {repoName}" >> README.md
+RUN git init
+RUN git add README.md
+
+# This ensures we have a volume mounted even if the user forgot to do bind
+# mount. So that they do not lose their data if they delete the container.
+VOLUME [ "/home/${user}/project" ]
+
+# Deleting coder user created by default
+#RUN sudo passwd -l coder
+#RUN sudo killall -9 -u coder
+#RUN sudo crontab -r -u coder
+#RUN sudo lprm coder
+#RUN userdel -r coder
+
+
+EXPOSE 8080
+
+ENTRYPOINT ["dumb-init", "code-server", "--host", "0.0.0.0"]
+

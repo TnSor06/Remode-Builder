@@ -1,0 +1,9 @@
+FROM postgres:latest
+ARG username
+ARG secret
+ENV POSTGRES_USER=${username} 
+ENV POSTGRES_PASSWORD=${secret}
+VOLUME [/var/lib/postgresql/data]
+ENTRYPOINT ["docker-entrypoint.sh"]
+EXPOSE 5432
+CMD ["postgres"]

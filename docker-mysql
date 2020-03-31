@@ -1,0 +1,9 @@
+FROM mysql:latest
+ARG username
+ARG secret
+ENV MYSQL_USER=${username} 
+ENV MYSQL_PASSWORD=${secret}
+VOLUME [/var/lib/mysql]
+ENTRYPOINT ["docker-entrypoint.sh"]
+EXPOSE 3306 33060
+CMD ["mysqld"]
