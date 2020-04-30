@@ -4,6 +4,11 @@ var fs = require("fs");
 var util = require("util");
 const child_process = require("child_process");
 
+const registryData = {
+  ip: "127.0.0.1",
+  port: 5000
+};
+
 var log_file = fs.createWriteStream(__dirname + "/debug.log", { flags: "a" });
 var docker_file = fs.createWriteStream(__dirname + "/docker.log", {
   flags: "a"
@@ -53,7 +58,11 @@ io.on("connection", socket => {
           project.repoName
         } -t ${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
           data.container1.image
-        }-${data.container1.tag}:latest -f docker-${data.container1.image} .`,
+        }-${
+          data.container1.tag
+        }:latest -t ${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
+          data.container1.image
+        }-${data.container1.tag}:new -f docker-${data.container1.image} .`,
         function(error, stdout, stderr) {
           if (error) {
             logger(
@@ -74,9 +83,9 @@ io.on("connection", socket => {
           }
           if (stdout.length > 0) {
             var imageId = child_process.exec(
-              `docker images --format="{{.Repository}} {{.ID}}" |  grep "^${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
+              `docker images --format="{{.Repository}}:{{.Tag}} {{.ID}}" |  grep "^${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
                 data.container1.image
-              }-${data.container1.tag}" |  cut -d' ' -f2`,
+              }-${data.container1.tag}:new" |  cut -d' ' -f2`,
               function(error, stdout, stderr) {
                 if (error) {
                   logger(
@@ -99,7 +108,7 @@ io.on("connection", socket => {
                   const imageName = `${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
                     data.container1.image
                   }-${data.container1.tag}`;
-                  const imageId = stdout.replace("\n", "");
+                  const imageId = stdout.substr(0, stdout.length - 1);
                   docklogger({
                     imageName,
                     imageId,
@@ -127,7 +136,9 @@ io.on("connection", socket => {
           project.secret
         } --build-arg username=${project.user.toLowerCase()} -t ${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
           data.container2.image
-        }:latest -f docker-${data.container2.image} .`,
+        }:latest -t ${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
+          data.container2.image
+        }:new -f docker-${data.container2.image} .`,
         function(error, stdout, stderr) {
           if (error) {
             logger(
@@ -148,9 +159,9 @@ io.on("connection", socket => {
           }
           if (stdout.length > 0) {
             var imageId = child_process.exec(
-              `docker images --format="{{.Repository}} {{.ID}}" |  grep "^${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
+              `docker images --format="{{.Repository}}:{{.Tag}} {{.ID}}" |  grep "^${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
                 data.container2.image
-              }" |  cut -d' ' -f2`,
+              }:new" |  cut -d' ' -f2`,
               function(error, stdout, stderr) {
                 if (error) {
                   logger(
@@ -172,8 +183,8 @@ io.on("connection", socket => {
                 if (stdout.length > 0) {
                   const imageName = `${project.user.toLowerCase()}-${project.repoName.toLowerCase()}-${
                     data.container2.image
-                  }-latest`;
-                  const imageId = stdout.replace("\n", "");
+                  }`;
+                  const imageId = stdout.substr(0, stdout.length - 1);
                   docklogger({
                     imageName,
                     imageId,
@@ -197,5 +208,58 @@ io.on("connection", socket => {
     }
   });
 
-  // New Socket here
+  socket.on("newProjectRegister", data => {
+    console.log("Registering", data);
+    var imageRegister = child_process.exec(
+      `docker tag ${data.image.imageName}:new ${registryData.ip}:${
+        registryData.port
+      }/${data.image.imageName}:new &&
+      docker push ${registryData.ip}:${registryData.port}/${
+        data.image.imageName
+      }:new && 
+      docker tag ${data.image.imageName}:latest ${registryData.ip}:${
+        registryData.port
+      }/${data.image.imageName}:latest && 
+      docker push ${registryData.ip}:${registryData.port}/${
+        data.image.imageName
+      }:latest &&
+      docker rmi ${data.image.imageId.substr(0, 5)}:new --force`,
+      function(error, stdout, stderr) {
+        if (error) {
+          logger(
+            data,
+            `Code:${error.code},Signal:${error.signal},Stack:${error.stack}`
+          );
+          io.sockets.emit("newProjectRegisterReject", {
+            data: data,
+            message: `Failed on registering: Check logs on ${new Date().toLocaleString()}`
+          });
+        }
+        if (stderr.length > 0) {
+          logger(data, `Error: ${stderr}`);
+          io.sockets.emit("newProjectRegisterReject", {
+            data: data,
+            message: `Failed on registering: Check logs on ${new Date().toLocaleString()}`
+          });
+        }
+        if (stdout.length > 0) {
+          const user = data.data.project.repoNameWithOwner.split("/")[0];
+          docklogger({
+            imageName: data.image.imageName,
+            imageId: data.image.imageId,
+            user: user.toLowerCase(),
+            message: "Registered"
+          });
+          const newData = data;
+          newData.message = "Registered";
+          io.sockets.emit("newProjectRegisterSuccess", newData);
+        }
+      }
+    );
+  });
+
+  socket.on("repoID", data => {
+    // Forwarding socket data
+    io.sockets.emit("repoID", data);
+  });
 });
